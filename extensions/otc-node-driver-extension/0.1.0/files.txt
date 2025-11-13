@@ -1,0 +1,7 @@
+plugin/otc-node-driver-extension-0.1.0.umd.min.cloud-credential.js
+plugin/otc-node-driver-extension-0.1.0.umd.min.cloud-credential.js.map
+plugin/otc-node-driver-extension-0.1.0.umd.min.js
+plugin/otc-node-driver-extension-0.1.0.umd.min.js.map
+plugin/otc-node-driver-extension-0.1.0.umd.min.machine-config.js
+plugin/otc-node-driver-extension-0.1.0.umd.min.machine-config.js.map
+plugin/package.json

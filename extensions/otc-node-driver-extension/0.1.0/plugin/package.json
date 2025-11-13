@@ -3,13 +3,7 @@
   "description": "otc-node-driver-extension plugin",
   "version": "0.1.0",
   "private": false,
-  "rancher": {
-    "annotations": {
-      "catalog.cattle.io/rancher-version": ">= 2.10.0",
-      "catalog.cattle.io/ui-extensions-version": ">= 3.0.0 < 4.0.0"
-    }
-  },
-  "scripts": {},
+  "rancher": true,
   "engines": {
     "node": ">=16"
   },
@@ -18,9 +12,8 @@
     "@vue/cli-service": "~5.0.0",
     "@vue/cli-plugin-typescript": "~5.0.0"
   },
-  "browserslist": [
-    "> 1%",
-    "last 2 versions",
-    "not dead"
-  ]
+  "files": [
+    "**/*"
+  ],
+  "main": "otc-node-driver-extension-0.1.0.umd.min.js"
 }
