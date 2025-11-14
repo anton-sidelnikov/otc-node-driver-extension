@@ -1,6 +1,6 @@
 {
-  "name": "otc-node-driver-extension",
-  "description": "otc-node-driver-extension plugin",
+  "name": "opentelekomcloud-node-driver-extension",
+  "description": "opentelekomcloud-node-driver-extension plugin",
   "version": "0.1.0",
   "private": false,
   "rancher": {
