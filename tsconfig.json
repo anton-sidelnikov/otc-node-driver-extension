@@ -13,7 +13,7 @@
     "sourceMap": false,
     "strict": true,
     "noEmit": true,
-    "baseUrl": "./opentelekomcloud-node-driver-extension",
+    "baseUrl": "./otc-node-driver-extension",
     "paths": {
       "~/*": [
         "./*"
