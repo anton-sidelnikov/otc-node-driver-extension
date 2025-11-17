@@ -1,6 +1,6 @@
 apiVersion: v1
 entries:
-  opentelekomcloud-node-driver-extension:
+  otc-node-driver-extension:
   - annotations:
       catalog.cattle.io/certified: rancher
       catalog.cattle.io/namespace: cattle-ui-plugin-system
@@ -11,13 +11,13 @@ entries:
       catalog.cattle.io/ui-component: plugins
       catalog.cattle.io/ui-extensions-version: '>= 3.0.0 < 4.0.0'
     apiVersion: v2
-    appVersion: 0.2.1
-    created: "2025-11-15T14:14:10.208853+01:00"
-    description: opentelekomcloud-node-driver-extension plugin
-    digest: a3d96130b7dc85b2ab2106ddbaf0438ea3d12f7629fd7d25055ecdb7f5d805f8
-    name: opentelekomcloud-node-driver-extension
+    appVersion: 0.3.0
+    created: "2025-11-17T17:54:31.384046+01:00"
+    description: OpenTelekomCloud node driver extension plugin
+    digest: e6692260167f5289e7b46458be85d7c122aa6fa4f2643d99fa3f8cdb5ef6597b
+    name: otc-node-driver-extension
     type: application
     urls:
-    - assets/opentelekomcloud-node-driver-extension/opentelekomcloud-node-driver-extension-0.2.1.tgz
-    version: 0.2.1
-generated: "2025-11-15T14:14:10.208574+01:00"
+    - assets/otc-node-driver-extension/otc-node-driver-extension-0.3.0.tgz
+    version: 0.3.0
+generated: "2025-11-17T17:54:31.383806+01:00"

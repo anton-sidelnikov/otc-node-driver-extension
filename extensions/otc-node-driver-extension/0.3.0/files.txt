@@ -1,0 +1,3 @@
+plugin/otc-node-driver-extension-0.3.0.umd.min.js
+plugin/otc-node-driver-extension-0.3.0.umd.min.js.map
+plugin/package.json

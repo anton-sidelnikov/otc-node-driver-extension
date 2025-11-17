@@ -8,8 +8,8 @@ annotations:
   catalog.cattle.io/rancher-version: '>= 2.10.0'
   catalog.cattle.io/ui-extensions-version: '>= 3.0.0 < 4.0.0'
 apiVersion: v2
-appVersion: 0.2.1
-description: opentelekomcloud-node-driver-extension plugin
-name: opentelekomcloud-node-driver-extension
+appVersion: 0.3.0
+description: OpenTelekomCloud node driver extension plugin
+name: otc-node-driver-extension
 type: application
-version: 0.2.1
+version: 0.3.0
