@@ -1,5 +1,5 @@
 {
-  "name": "opentelekomcloud-node-driver-extension",
+  "name": "opentelekomcloud",
   "description": "OpenTelekomCloud node driver extension plugin",
   "version": "0.4.0",
   "private": false,
