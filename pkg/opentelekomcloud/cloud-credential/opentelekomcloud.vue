@@ -45,7 +45,6 @@ export default {
 
       decoded.username          = ann['opentelekomcloud.cattle.io/username'] || decoded.username;
       decoded.domainName        = ann['opentelekomcloud.cattle.io/domainName'] || decoded.domainName;
-      decoded.password          = ann['opentelekomcloud.cattle.io/password'] || decoded.password;
       decoded.region            = ann['opentelekomcloud.cattle.io/region'] || decoded.region;
       decoded.authUrl           = ann['opentelekomcloud.cattle.io/authUrl'] || decoded.authUrl;
       decoded.projectName       = ann['opentelekomcloud.cattle.io/projectName'] || decoded.projectName;
@@ -131,10 +130,14 @@ export default {
     },
   },
 
-  // No watchers needed now
-
   created() {
     this.$emit('validationChanged', false);
+
+    this.value.annotations = this.value.annotations || {};
+
+    if (!this.value.annotations['provisioning.cattle.io/driver']) {
+      this.value.annotations['provisioning.cattle.io/driver'] = 'opentelekomcloud';
+    }
 
     const url = this.authUrlForRegion(this.region);
 

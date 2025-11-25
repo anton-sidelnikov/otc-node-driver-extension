@@ -1,113 +1,430 @@
-<script setup lang="ts">
-// Rancher supplies a `machine` model with a .spec of type <your driver>Config
-// This component should set keys that match your flags (e.g., otc-region, otc-flavor-id, etc.)
-import { ref, watchEffect } from 'vue';
+<script>
+import Loading from '@shell/components/Loading';
+import {Banner} from '@components/Banner';
+import CreateEditView from '@shell/mixins/create-edit-view';
+import LabeledSelect from '@shell/components/form/LabeledSelect';
+import {LabeledInput} from '@components/Form/LabeledInput';
+import {NORMAN, SECRET} from '@shell/config/types';
+import {stringify} from '@shell/utils/error';
+import {_VIEW} from '@shell/config/query-params';
+import FileSelector from '../components/FileSelector';
+import {OpenTelekomCloud} from '../opentelekomcloud.ts';
 
-const props = defineProps<{ machine: { spec: Record<string, any> } }>();
-const spec = props.machine.spec;
+function initOptions() {
+  return {
+    options:  [],
+    selected: null,
+    busy:     false,
+    enabled:  false,
+  };
+}
 
-// Bind fields (use the same names your driver reads)
-const region     = ref(spec['opentelekomcloud-region']       || '');
-const az         = ref(spec['opentelekomcloud-availability-zone'] || '');
-const vpcId      = ref(spec['opentelekomcloud-vpc-id']       || '');
-const subnetId   = ref(spec['opentelekomcloud-subnet-id']    || '');
-const flavorId   = ref(spec['opentelekomcloud-flavor-id']    || '');
-const flavorName = ref(spec['opentelekomcloud-flavor-name']  || 's3.large.2');
-const imageId    = ref(spec['opentelekomcloud-image-id']     || '');
-const imageName  = ref(spec['opentelekomcloud-image-name']   || 'Standard_Ubuntu_24.04_amd64_uefi_latest');
-const sshUser    = ref(spec['opentelekomcloud-ssh-user']     || 'ubuntu');
-const sshPort    = ref(spec['opentelekomcloud-ssh-port']     || 22);
-const keypair    = ref(spec['opentelekomcloud-keypair-name'] || '');
-const rootSize   = ref(spec['opentelekomcloud-root-volume-size'] || 40);
-const rootType   = ref(spec['opentelekomcloud-root-volume-type'] || 'SAS');
-const secGroups  = ref<string[]>(spec['opentelekomcloud-sec-groups'] ? String(spec['opentelekomcloud-sec-groups']).split(',') : []);
-const eipSkip    = ref(!!spec['opentelekomcloud-skip-eip']);
-const eipType    = ref(spec['opentelekomcloud-eip-type'] || '5_bgp');
-const bwType     = ref(spec['opentelekomcloud-bandwidth-type'] || 'PER');
-const bwSize     = ref(spec['opentelekomcloud-bandwidth-size'] || 100);
+export default {
+  components: {
+    Banner, FileSelector, Loading, LabeledInput, LabeledSelect
+  },
 
-// sync back to spec
-watchEffect(() => {
-  spec['opentelekomcloud-region']             = region.value.trim();
-  spec['opentelekomcloud-availability-zone']  = az.value.trim();
-  spec['opentelekomcloud-vpc-id']             = vpcId.value.trim();
-  spec['opentelekomcloud-subnet-id']          = subnetId.value.trim();
-  spec['opentelekomcloud-flavor-id']          = flavorId.value.trim();
-  spec['opentelekomcloud-flavor-name']        = flavorName.value.trim();
-  spec['opentelekomcloud-image-id']           = imageId.value.trim();
-  spec['opentelekomcloud-image-name']         = imageName.value.trim();
-  spec['opentelekomcloud-ssh-user']           = sshUser.value.trim();
-  spec['opentelekomcloud-ssh-port']           = Number(sshPort.value) || 22;
-  spec['opentelekomcloud-keypair-name']       = keypair.value.trim();
-  spec['opentelekomcloud-root-volume-size']   = Number(rootSize.value) || 40;
-  spec['opentelekomcloud-root-volume-type']   = rootType.value.trim();
-  spec['opentelekomcloud-sec-groups']         = secGroups.value.join(',');
-  spec['opentelekomcloud-skip-eip']           = !!eipSkip.value;
-  spec['opentelekomcloud-eip-type']           = eipType.value;
-  spec['opentelekomcloud-bandwidth-type']     = bwType.value;
-  spec['opentelekomcloud-bandwidth-size']     = Number(bwSize.value) || 100;
-});
+  mixins: [CreateEditView],
+
+  props: {
+    uuid: {
+      type:     String,
+      required: true,
+    },
+
+    cluster: {
+      type:    Object,
+      default: () => ({})
+    },
+
+    credentialId: {
+      type:     String,
+      required: true,
+    },
+
+    disabled: {
+      type:    Boolean,
+      default: false
+    },
+
+    busy: {
+      type:    Boolean,
+      default: false
+    },
+
+    provider: {
+      type:     String,
+      required: true,
+    }
+  },
+
+  async fetch() {
+    this.errors = [];
+    if ( !this.credentialId ) {
+      return;
+    }
+
+    if (this.mode === _VIEW) {
+      this.initForViewMode();
+
+      return;
+    }
+
+    try {
+      this.credential = await this.$store.dispatch('rancher/find', { type: NORMAN.CLOUD_CREDENTIAL, id: this.credentialId });
+    } catch (e) {
+      this.credential = null;
+    }
+
+    // Try and get the secret for the Cloud Credential as we need the plain-text password
+    try {
+      const id = this.credentialId.replace(':', '/');
+      const secret = await this.$store.dispatch('management/find', { type: SECRET, id });
+      const credPassword = secret.data['opentelekomcloudcredentialConfig-password'];
+      this.password = atob(credPassword);
+      this.havePassword = true;
+      this.ready = true;
+    } catch (e) {
+      // this.credential = null;
+      this.password = '';
+      this.havePassword = false;
+      console.error(e); // eslint-disable-line no-console
+    }
+
+    this.$set(this, 'authenticating', true);
+
+    const otc = new OpenTelekomCloud(this.$store, this.credential);
+
+    otc.password = this.password;
+
+    const credUsername = secret.data['opentelekomcloudcredentialConfig-username'];
+    this.username = atob(credUsername);
+    otc.username = this.username;
+
+    const credRegion = secret.data['opentelekomcloudcredentialConfig-region'];
+    this.region = atob(credRegion);
+    otc.region = this.region;
+
+    const credEndpoint = secret.data['opentelekomcloudcredentialConfig-authUrl'];
+    this.endpoint = atob(credEndpoint);
+    otc.endpoint = this.endpoint;
+
+    const credDomainName = secret.data['opentelekomcloudcredentialConfig-domainName'];
+    this.domainName = atob(credDomainName);
+    otc.domainName = this.domainName;
+
+    const credProjectName = secret.data['opentelekomcloudcredentialConfig-projectName'];
+    this.projectName = atob(credProjectName);
+    otc.projectName = this.projectName;
+    // console.log("project name: ", otc.projectName)
+    this.otc = otc;
+
+    // Fetch a token - if this succeeds, kick off async fetching the lists we need
+    this.otc.getToken().then((res) => {
+      if (res.error) {
+        this.$set(this, 'authenticating', false);
+        this.$emit('validationChanged', false);
+
+        this.errors.push('Unable to authenticate with the OpenTelekomCloud server');
+
+        return;
+      }
+
+      this.$set(this, 'authenticating', false);
+
+      otc.getFlavors(this.flavors, this.value?.flavorName);
+      otc.getImages(this.images, this.value?.imageName);
+      otc.getKeyPairs(this.keyPairs, this.value?.keypairName);
+      otc.getSecurityGroups(this.securityGroups, this.value?.secGroups);
+      otc.getFloatingIpPools(this.floatingIpPools, this.value?.floatingipPool);
+      otc.getNetworkNames(this.networks, this.value?.netName);
+      otc.getAvailabilityZones(this.availabilityZones, this.value?.availabilityZone);
+    });
+
+    this.$emit('validationChanged', false);
+  },
+
+  data() {
+    return {
+      authenticating:      false,
+      ready:               false,
+      otc:                 null,
+      password:            null,
+      havePassword:        false,
+      flavors:             initOptions(),
+      images:              initOptions(),
+      keyPairs:            initOptions(),
+      securityGroups:      initOptions(),
+      floatingIpPools:     initOptions(),
+      networks:            initOptions(),
+      availabilityZones:   initOptions(),
+      sshUser:             this.value?.sshUser || 'root',
+      privateKeyFile:      this.value?.privateKeyFile || '',
+      filename:            this.value?.privateKeyFile ? 'Private Key Provided' : '',
+      privateKeyFieldType: 'password',
+      errors:              null,
+    };
+  },
+
+  watch: {
+    'credentialId'() {
+      this.$fetch();
+    },
+  },
+
+  methods: {
+    stringify,
+
+    initForViewMode() {
+      this.fakeSelectOptions(this.flavors, this.value?.flavorName);
+      this.fakeSelectOptions(this.images, this.value?.imageName);
+      this.fakeSelectOptions(this.keyPairs, this.value?.keypairName);
+      this.fakeSelectOptions(this.securityGroups, this.value?.secGroups);
+      this.fakeSelectOptions(this.floatingIpPools, this.value?.floatingipPool);
+      this.fakeSelectOptions(this.networks, this.value?.netName);
+      this.fakeSelectOptions(this.availabilityZones, this.value?.availabilityZone);
+    },
+
+    fakeSelectOptions(list, value) {
+      list.busy = false;
+      list.enabled = false;
+      list.options = [];
+
+      if (value) {
+        list.options.push({
+          label: value,
+          value,
+        });
+      }
+
+      list.selected = value;
+    },
+
+    onPrivateKeyFileSelected(v) {
+      this.filename = v.file.name;
+      this.privateKeyFile = v.data;
+
+      // On initial load, filename is shown as a password as we don't know what the filename was that was used - we just want to indicate there is a vlue
+      // When a file is chosen, change the type to text, so that the user can see the filename of the file that they chose
+      this.privateKeyFieldType = 'text';
+
+      this.$emit('validationChanged', true);
+    },
+
+    syncValue() {
+      // Note: We don't need to provide password as this is picked up via the credential
+
+      // Copy the values from the form to the correct places on the value
+      // this.value.tenantDomainName = this.otc.projectDomainName;
+      // this.value.userDomainName = this.otc.domainName;
+      // this.value.tenantId = this.otc.projectId;
+      this.value.availabilityZone = this.availabilityZones.selected?.name;
+      this.value.flavorName = this.flavors.selected?.name;
+      this.value.imageName = this.images.selected?.name;
+      this.value.floatingipPool = this.floatingIpPools.selected?.name;
+      this.value.keypairName = this.keyPairs.selected?.name;
+      this.value.netName = this.networks.selected?.name;
+      this.value.secGroups = this.securityGroups.selected?.name;
+      this.value.sshUser = this.sshUser;
+      this.value.privateKeyFile = this.privateKeyFile;
+
+      // Not configurable
+      this.value.endpointType = 'publicURL';
+      this.value.insecure = true;
+      this.value.bootFromVolume = false;
+      this.value.sshPort = '22';
+    },
+
+    test() {
+      this.syncValue();
+    }
+  }
+};
 </script>
 
 <template>
-  <div class="space-y-6">
-    <h3 class="text-lg font-semibold">OpenTelekomCloud machine options</h3>
-
-    <div class="grid md:grid-cols-2 gap-3">
-      <div><label>Region</label><input class="form-control" v-model="region" placeholder="eu-de" /></div>
-      <div><label>Availability Zone</label><input class="form-control" v-model="az" placeholder="eu-de-01" /></div>
-      <div><label>VPC ID</label><input class="form-control" v-model="vpcId" /></div>
-      <div><label>Subnet ID</label><input class="form-control" v-model="subnetId" /></div>
-    </div>
-
-    <div class="grid md:grid-cols-2 gap-3">
-      <div><label>Flavor ID (or Name)</label><input class="form-control" v-model="flavorId" placeholder="s3.large.2 id" /></div>
-      <div><label>Flavor Name</label><input class="form-control" v-model="flavorName" placeholder="s3.large.2" /></div>
-      <div><label>Image ID (or Name)</label><input class="form-control" v-model="imageId" /></div>
-      <div><label>Image Name</label><input class="form-control" v-model="imageName" /></div>
-    </div>
-
-    <div class="grid md:grid-cols-3 gap-3">
-      <div><label>SSH User</label><input class="form-control" v-model="sshUser" /></div>
-      <div><label>SSH Port</label><input class="form-control" type="number" v-model="sshPort" /></div>
-      <div><label>Keypair Name</label><input class="form-control" v-model="keypair" /></div>
-    </div>
-
-    <div class="grid md:grid-cols-3 gap-3">
-      <div><label>Root Volume Size (GiB)</label><input class="form-control" type="number" v-model="rootSize" /></div>
-      <div>
-        <label>Root Volume Type</label>
-        <select class="form-control" v-model="rootType">
-          <option>SAS</option><option>SSD</option><option>SATA</option>
-        </select>
-      </div>
-      <div>
-        <label>Security Groups (IDs, comma-separated)</label>
-        <input class="form-control" :value="secGroups.join(',')" @input="e=>secGroups=e.target.value.split(',').map(x=>x.trim()).filter(Boolean)" />
+  <div>
+    <Loading
+        v-if="$fetchState.pending"
+        :delayed="true"
+    />
+    <div v-if="errors.length">
+      <div
+          v-for="(err, idx) in errors"
+          :key="idx"
+      >
+        <Banner
+            color="error"
+            :label="stringify(err)"
+        />
       </div>
     </div>
-
-    <details>
-      <summary class="font-medium">Elastic IP (optional)</summary>
-      <div class="grid md:grid-cols-3 gap-3 pt-2">
-        <div><label>Skip EIP</label><input type="checkbox" v-model="eipSkip" /></div>
-        <div><label>EIP Type</label><input class="form-control" v-model="eipType" /></div>
-        <div><label>Bandwidth (Type / Size)</label>
-          <div class="grid grid-cols-2 gap-2">
-            <select class="form-control" v-model="bwType"><option>PER</option><option>WHOLE</option></select>
-            <input class="form-control" type="number" v-model="bwSize" />
-          </div>
+    <div>
+      <div class="opentelekomcloud-config">
+        <div class="title">
+          OpenTelekomCloud Configuration
+        </div>
+        <div
+            v-if="authenticating"
+            class="loading"
+        >
+          <i class="icon-spinner icon-spin icon-lg" />
+          <span>
+            Authenticating with the OpenTelekomCloud server ...
+          </span>
         </div>
       </div>
-    </details>
+      <div class="row mt-10">
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="flavors.selected"
+              label="Flavor"
+              :options="flavors.options"
+              :disabled="!flavors.enabled || busy"
+              :loading="flavors.busy"
+              :searchable="false"
+          />
+        </div>
 
-    <p class="text-sm text-muted mt-2">
-      On save, Rancher uses your Cloud Credential and runs the driver’s <code>PreCreateCheck()</code> to validate the config.
-    </p>
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="images.selected"
+              label="Image"
+              :options="images.options"
+              :disabled="!images.enabled || busy"
+              :loading="images.busy"
+              :searchable="false"
+          />
+        </div>
+      </div>
+      <div class="row mt-10">
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="keyPairs.selected"
+              label="Key Pair"
+              :options="keyPairs.options"
+              :disabled="!keyPairs.enabled || busy"
+              :loading="keyPairs.busy"
+              :searchable="false"
+          />
+        </div>
+        <div class="col span-6">
+          <LabeledInput
+              v-model="filename"
+              label="Private Key"
+              :mode="mode"
+              :type="privateKeyFieldType"
+              :disabled="busy"
+              :required="true"
+          >
+            <template v-slot:suffix>
+              <div class="file-button">
+                <FileSelector
+                    label="..."
+                    :mode="mode"
+                    :include-file="true"
+                    :disabled="busy"
+                    class="btn-sm"
+                    @selected="onPrivateKeyFileSelected"
+                />
+              </div>
+            </template>
+          </LabeledInput>
+        </div>
+      </div>
+      <div class="row mt-10">
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="securityGroups.selected"
+              label="Security Groups"
+              :options="securityGroups.options"
+              :disabled="!securityGroups.enabled || busy"
+              :loading="securityGroups.busy"
+              :searchable="false"
+          />
+        </div>
+      </div>
+      <div class="row mt-10">
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="availabilityZones.selected"
+              label="Availability Zone"
+              :options="availabilityZones.options"
+              :disabled="!availabilityZones.enabled || busy"
+              :loading="availabilityZones.busy"
+              :searchable="false"
+          />
+        </div>
+      </div>
+      <div class="row mt-10">
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="floatingIpPools.selected"
+              label="Floating IP Pools"
+              :options="floatingIpPools.options"
+              :disabled="!floatingIpPools.enabled || busy"
+              :loading="floatingIpPools.busy"
+              :searchable="false"
+          />
+        </div>
+        <div class="col span-6">
+          <LabeledSelect
+              v-model="networks.selected"
+              label="Networks"
+              :options="networks.options"
+              :disabled="!networks.enabled || busy"
+              :loading="networks.busy"
+              :searchable="false"
+          />
+        </div>
+      </div>
+      <div class="row mt-10">
+        <div class="col span-6">
+          <LabeledInput
+              v-model="sshUser"
+              :mode="mode"
+              :disabled="busy"
+              :required="true"
+              label="SSH User ID"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
+<style scoped lang="scss">
+.file-button {
+  align-items: center;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
 
-<style scoped>
-.form-control { @apply w-full border rounded px-3 py-2; }
-.text-muted { color: #6b7280; }
+  > .file-selector {
+    height: calc($input-height - 2px);
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+}
+
+.opentelekomcloud-config {
+  display: flex;
+  align-items: center;
+
+  > .title {
+    font-weight: bold;
+    padding: 4px 0;
+  }
+
+  > .loading {
+    margin-left: 20px;
+    display: flex;
+    align-items: center;
+
+    > i {
+      margin-right: 4px;;
+    }
+  }
+}
 </style>
