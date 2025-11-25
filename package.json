@@ -1,5 +1,5 @@
 {
-  "name": "otc-node-driver-extension",
+  "name": "opentelekomcloud-node-driver-extension",
   "version": "0.3.0",
   "private": false,
   "description": "Rancher UI Extension for the OpenTelekomCloud node driver (RKE2)",

@@ -9,25 +9,25 @@ const props = defineProps<{ credential: { data: Record<string, any> } }>();
 const d = props.credential.data;
 
 // model fields (keys become Cloud Credential data keys)
-const accessKey   = ref(d['otc-access-key']   || '');
-const secretKey   = ref(d['otc-secret-key']   || '');
-const username    = ref(d['otc-username']     || '');
-const password    = ref(d['otc-password']     || '');
-const domainName  = ref(d['otc-domain-name']  || '');
-const projectName = ref(d['otc-project-name'] || '');
-const region      = ref(d['otc-region']       || '');
-const authURL     = ref(d['otc-auth-url']     || '');
+const accessKey   = ref(d['opentelekomcloud-access-key']   || '');
+const secretKey   = ref(d['opentelekomcloud-secret-key']   || '');
+const username    = ref(d['opentelekomcloud-username']     || '');
+const password    = ref(d['opentelekomcloud-password']     || '');
+const domainName  = ref(d['opentelekomcloud-domain-name']  || '');
+const projectName = ref(d['opentelekomcloud-project-name'] || '');
+const region      = ref(d['opentelekomcloud-region']       || '');
+const authURL     = ref(d['opentelekomcloud-auth-url']     || '');
 
 // keep the model in sync
 watchEffect(() => {
-  d['otc-access-key']   = accessKey.value.trim();
-  d['otc-secret-key']   = secretKey.value.trim();
-  d['otc-username']     = username.value.trim();
-  d['otc-password']     = password.value;
-  d['otc-domain-name']  = domainName.value.trim();
-  d['otc-project-name'] = projectName.value.trim();
-  d['otc-region']       = region.value.trim();
-  d['otc-auth-url']     = authURL.value.trim();
+  d['opentelekomcloud-access-key']   = accessKey.value.trim();
+  d['opentelekomcloud-secret-key']   = secretKey.value.trim();
+  d['opentelekomcloud-username']     = username.value.trim();
+  d['opentelekomcloud-password']     = password.value;
+  d['opentelekomcloud-domain-name']  = domainName.value.trim();
+  d['opentelekomcloud-project-name'] = projectName.value.trim();
+  d['opentelekomcloud-region']       = region.value.trim();
+  d['opentelekomcloud-auth-url']     = authURL.value.trim();
 });
 
 // Simple guard: require region + one auth shape
