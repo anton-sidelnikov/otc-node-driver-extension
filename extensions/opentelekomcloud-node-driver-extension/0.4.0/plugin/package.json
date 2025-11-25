@@ -1,7 +1,7 @@
 {
-  "name": "otc-node-driver-extension",
+  "name": "opentelekomcloud-node-driver-extension",
   "description": "OpenTelekomCloud node driver extension plugin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": false,
   "rancher": true,
   "engines": {
@@ -15,5 +15,5 @@
   "files": [
     "**/*"
   ],
-  "main": "otc-node-driver-extension-0.3.0.umd.min.js"
+  "main": "opentelekomcloud-node-driver-extension-0.4.0.umd.min.js"
 }
