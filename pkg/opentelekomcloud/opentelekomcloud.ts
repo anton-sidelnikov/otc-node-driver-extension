@@ -1,0 +1,675 @@
+/**
+ * Helper class for dealing with the Open Telekom Cloud (OpenStack-based) APIs
+ *
+ * This is adapted from the Rancher OpenStack helper and extended with the
+ * OTC-specific calls from the legacy Ember client.js:
+ *  - listNodeFlavors
+ *  - listNodeImages (IMS / cloudimages)
+ *  - listVPCs / listSubnets
+ *  - waitForVPCUp / createVPC
+ *  - waitForSubnetUp / createSubnet
+ *  - listKeyPairs
+ *  - listSecurityGroups
+ *  - listProjects
+ *
+ * All calls are proxied via Rancher meta proxy using management/request.
+ */
+export class OpenTelekomCloud {
+  public domainName: string = '';
+  public endpoint: string = '';
+  public projectDomainName: string = '';
+  public projectId: string = '';
+  public projectName: string = '';
+  public username: string = '';
+  public password: string = '';
+  public token: string = '';
+  public region: string = '';
+  private catalog: any;
+  private endpoints: Record<string, string> = {};
+  private userId: string = '';
+
+  private $dispatch: any;
+
+  public regionsFromCatalog: any[] = [];
+
+  constructor($store: any, obj: any) {
+    if (obj.annotations) {
+      Object.keys(obj.annotations).forEach((key) => {
+        const p = key.split('/');
+
+        if (p.length === 2 && p[0] === 'opentelekomcloud.cattle.io') {
+          const field = p[1];
+
+          (this as any)[field] = obj.annotations[key];
+        }
+      });
+    } else {
+      // Copy from options to this
+      Object.keys(obj).forEach((key) => {
+        (this as any)[key] = obj[key];
+      });
+    }
+
+    this.$dispatch = $store.dispatch;
+  }
+
+  /**
+   * Authenticate using username/password and (optionally) project.
+   * Populates this.token, this.userId and this.endpoints (nova, vpc, glance).
+   */
+  public async getToken() {
+    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+    const url = `${ baseUrl }/auth/tokens`;
+
+    const data: any = {
+      auth: {
+        identity: {
+          methods:  ['password'],
+          password: {
+            user: {
+              name:     this.username,
+              domain:   { name: this.domainName },
+              password: this.password
+            }
+          }
+        }
+      }
+    };
+
+    if (this.projectName) {
+      // If projectName is set, scope to project
+      data.auth.scope = {
+        project: {
+          name:   this.projectName,
+          // projectDomainName is optional for OTC; if set, use it
+          ...(this.projectDomainName ? { domain: { name: this.projectDomainName } } : {})
+        }
+      };
+    } else {
+      // Otherwise scope to domain
+      data.auth.scope = {
+        domain: { name: this.domainName }
+      };
+    }
+
+    const headers = { Accept: 'application/json' };
+
+    try {
+      const res = await this.$dispatch('management/request', {
+        url,
+        headers,
+        method:               'POST',
+        redirectUnauthorized: false,
+        data
+      }, { root: true });
+
+      if (res._status === 502) {
+        return { error: 'Could not proxy request - URL may not be in Rancher\'s allow list' };
+      }
+
+      const token = res._headers?.['x-subject-token'];
+
+      this.token = token;
+      this.userId = res?.token?.user?.id;
+
+      this.regionsFromCatalog = [];
+
+      if (res?.token && res.token.catalog) {
+        this.catalog = res.token.catalog;
+        this.endpoints = {};
+
+        this.catalog.forEach((service: any) => {
+          // OTC uses service.name values such as 'nova', 'vpc', 'glance'
+          const endpointForRegion = (service.endpoints || []).find((ep: any) => ep.region === this.region);
+
+          if (!endpointForRegion) {
+            return;
+          }
+
+          switch (service.name) {
+          case 'nova':
+            this.endpoints.compute = endpointForRegion.url;
+            break;
+          case 'vpc':
+            this.endpoints.vpc = endpointForRegion.url;
+            break;
+          case 'glance':
+            this.endpoints.image = endpointForRegion.url;
+            break;
+          default:
+            break;
+          }
+
+          if (endpointForRegion && service.name === 'nova') {
+            if (!this.regionsFromCatalog.includes(endpointForRegion.region)) {
+              this.regionsFromCatalog.push(endpointForRegion.region);
+            }
+          }
+        });
+      }
+
+      this.regionsFromCatalog = this.regionsFromCatalog.map((id) => {
+        return { id }
+      });
+
+      return res;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
+  public async getFlavors(value: any, initial?: string) {
+    return await this.getOptions(value, '/flavors', 'flavors', undefined, initial);
+  }
+
+  public async getImages(value: any, initial?: string) {
+    // Note: For generic OpenStack this hits compute; OTC usually uses IMS,
+    // but we keep this for compatibility with existing usage.
+    return await this.getOptions(value, '/images/detail', 'images', undefined, initial);
+  }
+
+  public async getKeyPairs(value: any, initial?: string) {
+    return await this.getOptions(value, '/os-keypairs', 'keypairs', (v: any) => v.keypair, initial);
+  }
+
+  public async getSecurityGroups(value: any, initial?: string) {
+    return await this.getOptions(value, '/os-security-groups', 'security_groups', undefined, initial);
+  }
+
+  public async getFloatingIpPools(value: any, initial?: string) {
+    return await this.getOptions(value, '/os-floating-ip-pools', 'floating_ip_pools', undefined, initial);
+  }
+
+  public async getNetworkNames(value: any, initial?: string) {
+    return await this.getOptions(value, '/os-tenant-networks', 'networks', (network: any) => {
+      return {
+        ...network,
+        name: network.label
+      };
+    }, initial);
+  }
+
+  public async getAvailabilityZones(value: any, initial?: string) {
+    return await this.getOptions(value, '/os-availability-zone', 'availabilityZoneInfo', (zone: any) => {
+      return {
+        ...zone,
+        name: zone.zoneName
+      };
+    }, initial);
+  }
+
+  public async getOptions(value: any, api: string, field: string, mapper?: Function, initial?: string) {
+    // We are fetching the data for the options
+    value.busy = true;
+    value.enabled = true;
+    value.selected = '';
+
+    const res = await this.makeComputeRequest(api);
+
+    if (res && (res as any)[field]) {
+      let list = (res as any)[field] || [];
+
+      if (mapper) {
+        list = list.map((k: any) => mapper(k));
+      }
+
+      value.options = this.convertToOptions(list);
+      value.busy = false;
+
+      if (initial) {
+        const found = value.options.find((option: any) => option.value.name === initial);
+
+        if (found) {
+          value.selected = found.value;
+        }
+      }
+
+      if (!value.selected && value.options.length > 0) {
+        value.selected = value.options[0].value;
+      }
+    } else {
+      value.options = [];
+      value.selected = null;
+      value.busy = false;
+      value.enabled = false;
+    }
+  }
+
+  private async makeComputeRequest(api: string, method = 'GET', body?: any) {
+    const endpoint = this.endpoints['compute']?.replace(/^https?:\/\//, '');
+    if (!endpoint) {
+      return { error: 'No compute endpoint discovered from catalog' };
+    }
+
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+    const url = `${ baseUrl }${ api }`;
+
+    const headers: any = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    const req: any = {
+      url,
+      headers,
+      method,
+      redirectUnauthorized: false,
+    };
+
+    if (body) {
+      req.data = body;
+    }
+
+    try {
+      const res = await this.$dispatch('management/request', req, { root: true });
+
+      return res;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
+  private async makeVpcRequest(api: string, method = 'GET', body?: any) {
+    const endpoint = this.endpoints['vpc']?.replace(/^https?:\/\//, '');
+    if (!endpoint) {
+      return { error: 'No VPC endpoint discovered from catalog' };
+    }
+
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+    const url = `${ baseUrl }${ api }`;
+
+    const headers: any = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    const req: any = {
+      url,
+      headers,
+      method,
+      redirectUnauthorized: false,
+    };
+
+    if (body) {
+      req.data = body;
+    }
+
+    try {
+      const res = await this.$dispatch('management/request', req, { root: true });
+
+      return res;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
+  private async makeImageRequest(api: string, queryString = '') {
+    const endpoint = this.endpoints['image']?.replace(/^https?:\/\//, '');
+    if (!endpoint) {
+      return { error: 'No image (glance/IMS) endpoint discovered from catalog' };
+    }
+
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+    const url = `${ baseUrl }${ api }${ queryString }`;
+
+    const headers: any = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    try {
+      const res = await this.$dispatch('management/request', {
+        url,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
+
+      return res;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // OTC-specific "raw" calls adapted from legacy client.js
+  // ---------------------------------------------------------------------------
+
+  /**
+   * List compute flavors (node flavors) via Nova.
+   */
+  public async listNodeFlavors() {
+    const res = await this.makeComputeRequest('/flavors');
+
+    if ((res as any)?.flavors) {
+      return (res as any).flavors;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    return [];
+  }
+
+  /**
+   * List images from IMS (cloudimages) similar to legacy client.js.
+   */
+  public async listNodeImages() {
+    // Equivalent to validImageProperties in client.js
+    const query = [
+      'visibility=public',
+      'protected=true',
+      '__os_type=Linux',
+      '__os_bit=64',
+    ].join('&');
+
+    const res = await this.makeImageRequest('/v2/cloudimages', `?${ query }`);
+
+    if ((res as any)?.images) {
+      return (res as any).images;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    return [];
+  }
+
+  /**
+   * Find VPCs for the current project.
+   */
+  public async listVPCs() {
+    const res = await this.makeVpcRequest('/vpcs');
+
+    if ((res as any)?.vpcs) {
+      return (res as any).vpcs;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    return [];
+  }
+
+  /**
+   * Find subnets for a given VPC.
+   */
+  public async listSubnets(vpcId: string) {
+    const res = await this.makeVpcRequest(`/subnets?vpc_id=${ encodeURIComponent(vpcId) }`);
+
+    if ((res as any)?.subnets) {
+      return (res as any).subnets;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    return [];
+  }
+
+  /**
+   * Wait until VPC is available (status === 'OK').
+   */
+  public async waitForVPCUp(vpcId: string, endTime?: number): Promise<void> {
+    const timeoutMs = 10 * 1000;
+
+    if (!endTime) {
+      endTime = Date.now() + timeoutMs;
+    }
+
+    if (Date.now() > endTime) {
+      throw new Error('Timeout reached while waiting for VPC to become OK');
+    }
+
+    const res = await this.makeVpcRequest(`/vpcs/${ vpcId }`);
+
+    const status = (res as any)?.vpc?.status;
+
+    if (status === 'OK') {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    return this.waitForVPCUp(vpcId, endTime);
+  }
+
+  /**
+   * Create new VPC and wait until it is available.
+   * Returns created VPC ID.
+   */
+  public async createVPC(name: string, cidr: string): Promise<string> {
+    const body = {
+      vpc: {
+        name,
+        cidr
+      }
+    };
+
+    const res = await this.makeVpcRequest('/vpcs', 'POST', body);
+
+    if ((res as any)?.vpc?.id) {
+      const vpcId = (res as any).vpc.id;
+
+      await this.waitForVPCUp(vpcId);
+
+      return vpcId;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    throw new Error('Failed to create VPC');
+  }
+
+  /**
+   * Wait until subnet reaches status ACTIVE.
+   */
+  public async waitForSubnetUp(subnetId: string, endTime?: number): Promise<void> {
+    const timeoutMs = 10 * 1000;
+
+    if (!endTime) {
+      endTime = Date.now() + timeoutMs;
+    }
+
+    if (Date.now() > endTime) {
+      throw new Error('Timeout reached while waiting for Subnet to become ACTIVE');
+    }
+
+    const res = await this.makeVpcRequest(`/subnets/${ subnetId }`);
+
+    const status = (res as any)?.subnet?.status;
+
+    if (status === 'ACTIVE') {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    return this.waitForSubnetUp(subnetId, endTime);
+  }
+
+  /**
+   * Create new subnet instance and wait until it becomes ACTIVE.
+   * Returns created subnet ID.
+   */
+  public async createSubnet(vpcId: string, name: string, cidr: string, gatewayIP: string): Promise<string> {
+    // Default DNS list as in client.js
+    const defaultDNS = ['100.125.4.25', '8.8.8.8'];
+
+    const body = {
+      subnet: {
+        name,
+        cidr,
+        gateway_ip: gatewayIP,
+        vpc_id:     vpcId,
+        dnsList:    defaultDNS
+      }
+    };
+
+    const res = await this.makeVpcRequest('/subnets', 'POST', body);
+
+    if ((res as any)?.subnet?.id) {
+      const subnetId = (res as any).subnet.id;
+
+      await this.waitForSubnetUp(subnetId);
+
+      return subnetId;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    throw new Error('Failed to create Subnet');
+  }
+
+  /**
+   * List existing key pairs.
+   */
+  public async listKeyPairs() {
+    const res = await this.makeComputeRequest('/os-keypairs');
+
+    if ((res as any)?.keypairs) {
+      return (res as any).keypairs;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    return [];
+  }
+
+  /**
+   * List security groups (from VPC endpoint in OTC).
+   */
+  public async listSecurityGroups() {
+    const res = await this.makeVpcRequest('/security-groups');
+
+    if ((res as any)?.security_groups) {
+      return (res as any).security_groups;
+    }
+
+    if ((res as any)?.error) {
+      throw (res as any).error;
+    }
+
+    return [];
+  }
+
+  /**
+   * List projects (similar to listProjects in client.js).
+   * This uses the /auth/projects Keystone API.
+   */
+  public async listProjects() {
+    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+
+    const headers = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    try {
+      const res = await this.$dispatch('management/request', {
+        url:                  `${ baseUrl }/auth/projects`,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
+
+      return res?.projects || [];
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      throw e;
+    }
+  }
+
+  /**
+   * Generic Keystone-based project list used by OpenStack helper.
+   * Kept for compatibility.
+   */
+  public async getProjects() {
+    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+
+    const headers = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    try {
+      const res = await this.$dispatch('management/request', {
+        url:                  `${ baseUrl }/users/${ this.userId }/projects`,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
+
+      return res?.projects;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
+  public async getRegions() {
+    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+
+    const headers = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    try {
+      const res = await this.$dispatch('management/request', {
+        url:                  `${ baseUrl }/regions`,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
+
+      return res?.regions;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
+  private convertToOptions(list: any) {
+    const sorted = (list || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+    return sorted.map((p: any) => {
+      return {
+        label: p.name,
+        value: p
+      };
+    });
+  }
+}
