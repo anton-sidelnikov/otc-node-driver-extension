@@ -76,13 +76,28 @@ export default {
       this.credential = null;
     }
 
+    // Populate basic auth fields from the cloud credential config (without password)
+    const credCfg = this.credential?.opentelekomcloudcredentialConfig || {};
+    this.username = credCfg.username || '';
+    this.domainName = credCfg.domainName || '';
+    this.projectName = credCfg.projectName || '';
+    this.region = credCfg.region || '';
+    this.endpoint = credCfg.authUrl || '';
+
     // Try and get the secret for the Cloud Credential as we need the plain-text password
     try {
       const id = this.credentialId.replace(':', '/');
       const secret = await this.$store.dispatch('management/find', { type: SECRET, id });
       const credPassword = secret.data['opentelekomcloudcredentialConfig-password'];
-      this.password = atob(credPassword);
-      this.havePassword = true;
+
+      if (credPassword) {
+        this.password = atob(credPassword);
+        this.havePassword = true;
+      } else {
+        this.password = '';
+        this.havePassword = false;
+      }
+
       this.ready = true;
     } catch (e) {
       // this.credential = null;
@@ -93,30 +108,15 @@ export default {
 
     this.$set(this, 'authenticating', true);
 
-    const otc = new OpenTelekomCloud(this.$store, this.credential);
+    const otc = new OpenTelekomCloud(this.$store, {
+      endpoint:   this.endpoint,
+      domainName: this.domainName,
+      username:   this.username,
+      password:   this.password,
+      projectName: this.projectName,
+      region:     this.region,
+    });
 
-    otc.password = this.password;
-
-    const credUsername = secret.data['opentelekomcloudcredentialConfig-username'];
-    this.username = atob(credUsername);
-    otc.username = this.username;
-
-    const credRegion = secret.data['opentelekomcloudcredentialConfig-region'];
-    this.region = atob(credRegion);
-    otc.region = this.region;
-
-    const credEndpoint = secret.data['opentelekomcloudcredentialConfig-authUrl'];
-    this.endpoint = atob(credEndpoint);
-    otc.endpoint = this.endpoint;
-
-    const credDomainName = secret.data['opentelekomcloudcredentialConfig-domainName'];
-    this.domainName = atob(credDomainName);
-    otc.domainName = this.domainName;
-
-    const credProjectName = secret.data['opentelekomcloudcredentialConfig-projectName'];
-    this.projectName = atob(credProjectName);
-    otc.projectName = this.projectName;
-    // console.log("project name: ", otc.projectName)
     this.otc = otc;
 
     // Fetch a token - if this succeeds, kick off async fetching the lists we need
@@ -149,6 +149,11 @@ export default {
       authenticating:      false,
       ready:               false,
       otc:                 null,
+      username:            '',
+      endpoint:            '',
+      domainName:          '',
+      projectName:         '',
+      region:              '',
       password:            null,
       havePassword:        false,
       flavors:             initOptions(),
@@ -212,12 +217,19 @@ export default {
     },
 
     syncValue() {
-      // Note: We don't need to provide password as this is picked up via the credential
+      // Copy auth values from the Cloud Credential into the machine config, so they are
+      // passed as flags (opentelekomcloud-*) to the docker-machine driver.
+      // These fields are not shown in the UI, but are required for the driver to authenticate.
+      this.value.authUrl = this.endpoint;
+      this.value.domainName = this.domainName;
+      this.value.username = this.username;
+      this.value.projectName = this.projectName;
+      this.value.region = this.region;
 
+      if (this.havePassword && this.password) {
+        this.value.password = this.password;
+      }
       // Copy the values from the form to the correct places on the value
-      // this.value.tenantDomainName = this.otc.projectDomainName;
-      // this.value.userDomainName = this.otc.domainName;
-      // this.value.tenantId = this.otc.projectId;
       this.value.availabilityZone = this.availabilityZones.selected?.name;
       this.value.flavorName = this.flavors.selected?.name;
       this.value.imageName = this.images.selected?.name;

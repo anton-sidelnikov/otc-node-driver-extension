@@ -108,9 +108,7 @@ export class OpenTelekomCloud {
         return { error: 'Could not proxy request - URL may not be in Rancher\'s allow list' };
       }
 
-      const token = res._headers?.['x-subject-token'];
-
-      this.token = token;
+      this.token = res._headers?.['x-subject-token'];
       this.userId = res?.token?.user?.id;
 
       this.regionsFromCatalog = [];
