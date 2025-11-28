@@ -106,7 +106,7 @@ export default {
       console.error(e); // eslint-disable-line no-console
     }
 
-    this.$set(this, 'authenticating', true);
+    this.authenticating = true;
 
     const otc = new OpenTelekomCloud(this.$store, {
       endpoint:   this.endpoint,
@@ -121,8 +121,10 @@ export default {
 
     // Fetch a token - if this succeeds, kick off async fetching the lists we need
     this.otc.getToken().then((res) => {
+      console.log('[OTC] getToken result:', res);
+
       if (res.error) {
-        this.$set(this, 'authenticating', false);
+        this.authenticating = false;
         this.$emit('validationChanged', false);
 
         this.errors.push('Unable to authenticate with the OpenTelekomCloud server');
@@ -130,14 +132,19 @@ export default {
         return;
       }
 
-      this.$set(this, 'authenticating', false);
+      this.authenticating = false;
+
+      console.log('[OTC] Before getFlavors, endpoints:', this.otc); // важно: посмотреть this.otc.endpoints
 
       otc.getFlavors(this.flavors, this.value?.flavorName);
       otc.getImages(this.images, this.value?.imageName);
       otc.getKeyPairs(this.keyPairs, this.value?.keypairName);
       otc.getSecurityGroups(this.securityGroups, this.value?.secGroups);
       otc.getFloatingIpPools(this.floatingIpPools, this.value?.floatingipPool);
-      otc.getNetworkNames(this.networks, this.value?.netName);
+      otc.getVpcs(this.vpcs, this.value?.vpcName);
+      if (this.value?.vpcId) {
+        otc.getSubnets(this.subnets, this.value.vpcId);
+      }
       otc.getAvailabilityZones(this.availabilityZones, this.value?.availabilityZone);
     });
 
@@ -161,9 +168,10 @@ export default {
       keyPairs:            initOptions(),
       securityGroups:      initOptions(),
       floatingIpPools:     initOptions(),
-      networks:            initOptions(),
+      vpcs:                initOptions(),
+      subnets:             initOptions(),
       availabilityZones:   initOptions(),
-      sshUser:             this.value?.sshUser || 'root',
+      sshUser:             this.value?.sshUser || 'ubuntu',
       privateKeyFile:      this.value?.privateKeyFile || '',
       filename:            this.value?.privateKeyFile ? 'Private Key Provided' : '',
       privateKeyFieldType: 'password',
@@ -174,6 +182,18 @@ export default {
   watch: {
     'credentialId'() {
       this.$fetch();
+    },
+    'vpcs.selected'(newVpc) {
+      if (newVpc && newVpc.id && this.otc) {
+        // Enable subnets and load them for the selected VPC
+        this.subnets.enabled = true;
+        this.otc.getSubnets(this.subnets, newVpc.id);
+      } else {
+        // No VPC selected: clear and disable subnets
+        this.subnets.enabled = false;
+        this.subnets.options = [];
+        this.subnets.selected = null;
+      }
     },
   },
 
@@ -186,7 +206,8 @@ export default {
       this.fakeSelectOptions(this.keyPairs, this.value?.keypairName);
       this.fakeSelectOptions(this.securityGroups, this.value?.secGroups);
       this.fakeSelectOptions(this.floatingIpPools, this.value?.floatingipPool);
-      this.fakeSelectOptions(this.networks, this.value?.netName);
+      this.fakeSelectOptions(this.vpcs, this.value?.vpcName);
+      this.fakeSelectOptions(this.subnets, this.value?.subnetName);
       this.fakeSelectOptions(this.availabilityZones, this.value?.availabilityZone);
     },
 
@@ -235,7 +256,9 @@ export default {
       this.value.imageName = this.images.selected?.name;
       this.value.floatingipPool = this.floatingIpPools.selected?.name;
       this.value.keypairName = this.keyPairs.selected?.name;
-      this.value.netName = this.networks.selected?.name;
+      this.value.vpcName = this.vpcs.selected?.name;
+      this.value.vpcId = this.vpcs.selected?.id;
+      this.value.subnetName = this.subnets.selected?.name;
       this.value.secGroups = this.securityGroups.selected?.name;
       this.value.sshUser = this.sshUser;
       this.value.privateKeyFile = this.privateKeyFile;
@@ -289,7 +312,7 @@ export default {
       <div class="row mt-10">
         <div class="col span-6">
           <LabeledSelect
-              v-model="flavors.selected"
+              v-model:value="flavors.selected"
               label="Flavor"
               :options="flavors.options"
               :disabled="!flavors.enabled || busy"
@@ -300,7 +323,7 @@ export default {
 
         <div class="col span-6">
           <LabeledSelect
-              v-model="images.selected"
+              v-model:value="images.selected"
               label="Image"
               :options="images.options"
               :disabled="!images.enabled || busy"
@@ -312,7 +335,7 @@ export default {
       <div class="row mt-10">
         <div class="col span-6">
           <LabeledSelect
-              v-model="keyPairs.selected"
+              v-model:value="keyPairs.selected"
               label="Key Pair"
               :options="keyPairs.options"
               :disabled="!keyPairs.enabled || busy"
@@ -322,7 +345,7 @@ export default {
         </div>
         <div class="col span-6">
           <LabeledInput
-              v-model="filename"
+              v-model:value="filename"
               label="Private Key"
               :mode="mode"
               :type="privateKeyFieldType"
@@ -347,7 +370,7 @@ export default {
       <div class="row mt-10">
         <div class="col span-6">
           <LabeledSelect
-              v-model="securityGroups.selected"
+              v-model:value="securityGroups.selected"
               label="Security Groups"
               :options="securityGroups.options"
               :disabled="!securityGroups.enabled || busy"
@@ -359,7 +382,7 @@ export default {
       <div class="row mt-10">
         <div class="col span-6">
           <LabeledSelect
-              v-model="availabilityZones.selected"
+              v-model:value="availabilityZones.selected"
               label="Availability Zone"
               :options="availabilityZones.options"
               :disabled="!availabilityZones.enabled || busy"
@@ -371,7 +394,7 @@ export default {
       <div class="row mt-10">
         <div class="col span-6">
           <LabeledSelect
-              v-model="floatingIpPools.selected"
+              v-model:value="floatingIpPools.selected"
               label="Floating IP Pools"
               :options="floatingIpPools.options"
               :disabled="!floatingIpPools.enabled || busy"
@@ -379,13 +402,25 @@ export default {
               :searchable="false"
           />
         </div>
+      </div>
+      <div class="row mt-10">
         <div class="col span-6">
           <LabeledSelect
-              v-model="networks.selected"
-              label="Networks"
-              :options="networks.options"
-              :disabled="!networks.enabled || busy"
-              :loading="networks.busy"
+              v-model:value="vpcs.selected"
+              label="VPCs"
+              :options="vpcs.options"
+              :disabled="!vpcs.enabled || busy"
+              :loading="vpcs.busy"
+              :searchable="false"
+          />
+        </div>
+        <div class="col span-6">
+          <LabeledSelect
+              v-model:value="subnets.selected"
+              label="Subnets"
+              :options="subnets.options"
+              :disabled="!subnets.enabled || busy"
+              :loading="subnets.busy"
               :searchable="false"
           />
         </div>
@@ -393,7 +428,7 @@ export default {
       <div class="row mt-10">
         <div class="col span-6">
           <LabeledInput
-              v-model="sshUser"
+              v-model:value="sshUser"
               :mode="mode"
               :disabled="busy"
               :required="true"

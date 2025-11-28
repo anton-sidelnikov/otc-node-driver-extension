@@ -27,6 +27,7 @@ export class OpenTelekomCloud {
   private catalog: any;
   private endpoints: Record<string, string> = {};
   private userId: string = '';
+  public vpcId: string = '';
 
   private $dispatch: any;
 
@@ -161,38 +162,43 @@ export class OpenTelekomCloud {
   }
 
   public async getFlavors(value: any, initial?: string) {
-    return await this.getOptions(value, '/flavors', 'flavors', undefined, initial);
+    return await this.getComputeOptions(value, '/flavors', 'flavors', undefined, initial);
   }
 
   public async getImages(value: any, initial?: string) {
-    // Note: For generic OpenStack this hits compute; OTC usually uses IMS,
-    // but we keep this for compatibility with existing usage.
-    return await this.getOptions(value, '/images/detail', 'images', undefined, initial);
+    return await this.getImageOptions(value, '/v2/cloudimages', 'images', undefined, initial);
   }
 
   public async getKeyPairs(value: any, initial?: string) {
-    return await this.getOptions(value, '/os-keypairs', 'keypairs', (v: any) => v.keypair, initial);
+    return await this.getComputeOptions(value, '/os-keypairs', 'keypairs', (v: any) => v.keypair, initial);
   }
 
   public async getSecurityGroups(value: any, initial?: string) {
-    return await this.getOptions(value, '/os-security-groups', 'security_groups', undefined, initial);
+    return await this.getComputeOptions(value, '/os-security-groups', 'security_groups', undefined, initial);
   }
 
   public async getFloatingIpPools(value: any, initial?: string) {
-    return await this.getOptions(value, '/os-floating-ip-pools', 'floating_ip_pools', undefined, initial);
+    return await this.getComputeOptions(value, '/os-floating-ip-pools', 'floating_ip_pools', undefined, initial);
   }
 
-  public async getNetworkNames(value: any, initial?: string) {
-    return await this.getOptions(value, '/os-tenant-networks', 'networks', (network: any) => {
-      return {
-        ...network,
-        name: network.label
-      };
-    }, initial);
+  public async getVpcs(value: any, initial?: string) {
+    return await this.getVpcOptions(value, '/vpcs', 'vpcs', undefined, initial);
+  }
+
+  public async getSubnets(value: any, vpcId: string, initial?: string) {
+    // Optionally remember the last VPC ID used
+    this.vpcId = vpcId;
+    return await this.getVpcOptions(
+      value,
+      `/subnets?vpc_id=${ encodeURIComponent(vpcId) }`,
+      'subnets',
+      undefined,
+      initial
+    );
   }
 
   public async getAvailabilityZones(value: any, initial?: string) {
-    return await this.getOptions(value, '/os-availability-zone', 'availabilityZoneInfo', (zone: any) => {
+    return await this.getComputeOptions(value, '/os-availability-zone', 'availabilityZoneInfo', (zone: any) => {
       return {
         ...zone,
         name: zone.zoneName
@@ -200,7 +206,51 @@ export class OpenTelekomCloud {
     }, initial);
   }
 
-  public async getOptions(value: any, api: string, field: string, mapper?: Function, initial?: string) {
+  public async getImageOptions(value: any, api: string, field: string, mapper?: Function, initial?: string) {
+    // We are fetching the data for the options
+    value.busy = true;
+    value.enabled = true;
+    value.selected = '';
+
+    const query = [
+      'visibility=public',
+      'protected=true',
+      '__os_type=Linux',
+      '__os_bit=64',
+    ].join('&');
+
+    const res = await this.makeImageRequest(api, `?${ query }`);
+
+    if (res && (res as any)[field]) {
+      let list = (res as any)[field] || [];
+
+      if (mapper) {
+        list = list.map((k: any) => mapper(k));
+      }
+
+      value.options = this.convertToOptions(list);
+      value.busy = false;
+
+      if (initial) {
+        const found = value.options.find((option: any) => option.value.name === initial);
+
+        if (found) {
+          value.selected = found.value;
+        }
+      }
+
+      if (!value.selected && value.options.length > 0) {
+        value.selected = value.options[0].value;
+      }
+    } else {
+      value.options = [];
+      value.selected = null;
+      value.busy = false;
+      value.enabled = false;
+    }
+  }
+
+  public async getComputeOptions(value: any, api: string, field: string, mapper?: Function, initial?: string) {
     // We are fetching the data for the options
     value.busy = true;
     value.enabled = true;
@@ -237,7 +287,44 @@ export class OpenTelekomCloud {
     }
   }
 
-  private async makeComputeRequest(api: string, method = 'GET', body?: any) {
+  public async getVpcOptions(value: any, api: string, field: string, mapper?: Function, initial?: string) {
+    // We are fetching the data for the options
+    value.busy = true;
+    value.enabled = true;
+    value.selected = '';
+
+    const res = await this.makeVpcRequest(api);
+
+    if (res && (res as any)[field]) {
+      let list = (res as any)[field] || [];
+
+      if (mapper) {
+        list = list.map((k: any) => mapper(k));
+      }
+
+      value.options = this.convertToOptions(list);
+      value.busy = false;
+
+      if (initial) {
+        const found = value.options.find((option: any) => option.value.name === initial);
+
+        if (found) {
+          value.selected = found.value;
+        }
+      }
+
+      if (!value.selected && value.options.length > 0) {
+        value.selected = value.options[0].value;
+      }
+    } else {
+      value.options = [];
+      value.selected = null;
+      value.busy = false;
+      value.enabled = false;
+    }
+  }
+
+  public async makeComputeRequest(api: string) {
     const endpoint = this.endpoints['compute']?.replace(/^https?:\/\//, '');
     if (!endpoint) {
       return { error: 'No compute endpoint discovered from catalog' };
@@ -246,25 +333,18 @@ export class OpenTelekomCloud {
     const baseUrl = `/meta/proxy/${ endpoint }`;
     const url = `${ baseUrl }${ api }`;
 
-    const headers: any = {
+    const headers = {
       Accept:         'application/json',
       'X-Auth-Token': this.token
     };
 
-    const req: any = {
-      url,
-      headers,
-      method,
-      redirectUnauthorized: false,
-    };
-
-    if (body) {
-      req.data = body;
-    }
-
     try {
-      const res = await this.$dispatch('management/request', req, { root: true });
-
+      const res = await this.$dispatch('management/request', {
+        url,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
       return res;
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -275,33 +355,31 @@ export class OpenTelekomCloud {
   }
 
   private async makeVpcRequest(api: string, method = 'GET', body?: any) {
+    console.log('[OTC] makeVpcRequest: api =', api, 'endpoints =', this.endpoints);
+
     const endpoint = this.endpoints['vpc']?.replace(/^https?:\/\//, '');
+    console.log('[OTC] makeVpcRequest: ep =', endpoint);
+
     if (!endpoint) {
-      return { error: 'No VPC endpoint discovered from catalog' };
-    }
+      console.error('[OTC] No VPC endpoint for region', this.region, 'catalog:', this.catalog);
+      return null;    }
 
     const baseUrl = `/meta/proxy/${ endpoint }`;
     const url = `${ baseUrl }${ api }`;
+    console.log('[OTC] makeVpcRequest: url =', url);
 
     const headers: any = {
       Accept:         'application/json',
       'X-Auth-Token': this.token
     };
 
-    const req: any = {
-      url,
-      headers,
-      method,
-      redirectUnauthorized: false,
-    };
-
-    if (body) {
-      req.data = body;
-    }
-
     try {
-      const res = await this.$dispatch('management/request', req, { root: true });
-
+      const res = await this.$dispatch('management/request', {
+        url,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
       return res;
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -345,82 +423,6 @@ export class OpenTelekomCloud {
   // ---------------------------------------------------------------------------
   // OTC-specific "raw" calls adapted from legacy client.js
   // ---------------------------------------------------------------------------
-
-  /**
-   * List compute flavors (node flavors) via Nova.
-   */
-  public async listNodeFlavors() {
-    const res = await this.makeComputeRequest('/flavors');
-
-    if ((res as any)?.flavors) {
-      return (res as any).flavors;
-    }
-
-    if ((res as any)?.error) {
-      throw (res as any).error;
-    }
-
-    return [];
-  }
-
-  /**
-   * List images from IMS (cloudimages) similar to legacy client.js.
-   */
-  public async listNodeImages() {
-    // Equivalent to validImageProperties in client.js
-    const query = [
-      'visibility=public',
-      'protected=true',
-      '__os_type=Linux',
-      '__os_bit=64',
-    ].join('&');
-
-    const res = await this.makeImageRequest('/v2/cloudimages', `?${ query }`);
-
-    if ((res as any)?.images) {
-      return (res as any).images;
-    }
-
-    if ((res as any)?.error) {
-      throw (res as any).error;
-    }
-
-    return [];
-  }
-
-  /**
-   * Find VPCs for the current project.
-   */
-  public async listVPCs() {
-    const res = await this.makeVpcRequest('/vpcs');
-
-    if ((res as any)?.vpcs) {
-      return (res as any).vpcs;
-    }
-
-    if ((res as any)?.error) {
-      throw (res as any).error;
-    }
-
-    return [];
-  }
-
-  /**
-   * Find subnets for a given VPC.
-   */
-  public async listSubnets(vpcId: string) {
-    const res = await this.makeVpcRequest(`/subnets?vpc_id=${ encodeURIComponent(vpcId) }`);
-
-    if ((res as any)?.subnets) {
-      return (res as any).subnets;
-    }
-
-    if ((res as any)?.error) {
-      throw (res as any).error;
-    }
-
-    return [];
-  }
 
   /**
    * Wait until VPC is available (status === 'OK').
@@ -540,134 +542,23 @@ export class OpenTelekomCloud {
     throw new Error('Failed to create Subnet');
   }
 
-  /**
-   * List existing key pairs.
-   */
-  public async listKeyPairs() {
-    const res = await this.makeComputeRequest('/os-keypairs');
-
-    if ((res as any)?.keypairs) {
-      return (res as any).keypairs;
-    }
-
-    if ((res as any)?.error) {
-      throw (res as any).error;
-    }
-
-    return [];
-  }
-
-  /**
-   * List security groups (from VPC endpoint in OTC).
-   */
-  public async listSecurityGroups() {
-    const res = await this.makeVpcRequest('/security-groups');
-
-    if ((res as any)?.security_groups) {
-      return (res as any).security_groups;
-    }
-
-    if ((res as any)?.error) {
-      throw (res as any).error;
-    }
-
-    return [];
-  }
-
-  /**
-   * List projects (similar to listProjects in client.js).
-   * This uses the /auth/projects Keystone API.
-   */
-  public async listProjects() {
-    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
-    const baseUrl = `/meta/proxy/${ endpoint }`;
-
-    const headers = {
-      Accept:         'application/json',
-      'X-Auth-Token': this.token
-    };
-
-    try {
-      const res = await this.$dispatch('management/request', {
-        url:                  `${ baseUrl }/auth/projects`,
-        headers,
-        method:               'GET',
-        redirectUnauthorized: false,
-      }, { root: true });
-
-      return res?.projects || [];
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error(e);
-
-      throw e;
-    }
-  }
-
-  /**
-   * Generic Keystone-based project list used by OpenStack helper.
-   * Kept for compatibility.
-   */
-  public async getProjects() {
-    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
-    const baseUrl = `/meta/proxy/${ endpoint }`;
-
-    const headers = {
-      Accept:         'application/json',
-      'X-Auth-Token': this.token
-    };
-
-    try {
-      const res = await this.$dispatch('management/request', {
-        url:                  `${ baseUrl }/users/${ this.userId }/projects`,
-        headers,
-        method:               'GET',
-        redirectUnauthorized: false,
-      }, { root: true });
-
-      return res?.projects;
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error(e);
-
-      return { error: e };
-    }
-  }
-
-  public async getRegions() {
-    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
-    const baseUrl = `/meta/proxy/${ endpoint }`;
-
-    const headers = {
-      Accept:         'application/json',
-      'X-Auth-Token': this.token
-    };
-
-    try {
-      const res = await this.$dispatch('management/request', {
-        url:                  `${ baseUrl }/regions`,
-        headers,
-        method:               'GET',
-        redirectUnauthorized: false,
-      }, { root: true });
-
-      return res?.regions;
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error(e);
-
-      return { error: e };
-    }
-  }
-
   private convertToOptions(list: any) {
     const sorted = (list || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-    return sorted.map((p: any) => {
+    const options = sorted.map((p: any) => {
       return {
         label: p.name,
         value: p
       };
     });
+
+    // Prepend an empty option so dropdowns can have and select a blank value
+    return [
+      {
+        label: '-- EMPTY --',
+        value: null
+      },
+      ...options
+    ];
   }
 }
