@@ -420,6 +420,36 @@ export class OpenTelekomCloud {
     }
   }
 
+  /**
+   * Generic Keystone-based project list used by OpenStack helper.
+   * Kept for compatibility.
+   */
+  public async getProjects() {
+    const endpoint = this.endpoint.replace(/^https?:\/\//, '');
+    const baseUrl = `/meta/proxy/${ endpoint }`;
+
+    const headers = {
+      Accept:         'application/json',
+      'X-Auth-Token': this.token
+    };
+
+    try {
+      const res = await this.$dispatch('management/request', {
+        url:                  `${ baseUrl }/users/${ this.userId }/projects`,
+        headers,
+        method:               'GET',
+        redirectUnauthorized: false,
+      }, { root: true });
+
+      return res?.projects;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+
+      return { error: e };
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // OTC-specific "raw" calls adapted from legacy client.js
   // ---------------------------------------------------------------------------
