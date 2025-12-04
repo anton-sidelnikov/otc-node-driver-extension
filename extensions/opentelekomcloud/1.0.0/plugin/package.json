@@ -1,7 +1,7 @@
 {
   "name": "opentelekomcloud",
   "description": "OpenTelekomCloud node driver extension plugin",
-  "version": "0.5.1",
+  "version": "1.0.0",
   "private": false,
   "rancher": true,
   "engines": {
@@ -15,5 +15,5 @@
   "files": [
     "**/*"
   ],
-  "main": "opentelekomcloud-0.5.1.umd.min.js"
+  "main": "opentelekomcloud-1.0.0.umd.min.js"
 }
