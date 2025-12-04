@@ -8,5 +8,5 @@ export default function(plugin: IPlugin) {
 
   // Provide plugin metadata from package.json
   plugin.metadata = require('./package.json');
-  plugin.register('image', 'providers/opentelekomcloud.svg', require('opentelekomcloud.svg'));
+  plugin.register('image', 'providers/opentelekomcloud.svg', require('./opentelekomcloud.svg'));
 }
