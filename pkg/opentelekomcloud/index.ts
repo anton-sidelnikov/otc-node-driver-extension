@@ -6,7 +6,12 @@ export default function(plugin: IPlugin) {
   // Auto-import localization file(s)
   importTypes(plugin);
 
-  // Provide plugin metadata from package.json
-  plugin.metadata = require('./package.json');
-  plugin.register('image', 'providers/opentelekomcloud.svg', require('./opentelekomcloud.svg'));
+  const metadata = require('./package.json');
+  plugin.register('image', 'opentelekomcloud.svg', require('./opentelekomcloud.svg'));
+
+  // Attach metadata and tell Rancher which registered image to use as the extension icon
+  plugin.metadata = {
+    ...metadata,
+    icon: 'opentelekomcloud.svg',
+  };
 }
