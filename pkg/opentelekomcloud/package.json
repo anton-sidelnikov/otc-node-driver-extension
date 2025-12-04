@@ -1,7 +1,7 @@
 {
   "name": "opentelekomcloud",
   "description": "OpenTelekomCloud node driver extension plugin",
-  "version": "0.5.1",
+  "version": "1.0.0",
   "private": false,
   "rancher": {
     "annotations": {
