@@ -1,9 +1,9 @@
 {
   "name": "opentelekomcloud",
   "description": "OpenTelekomCloud node driver extension plugin",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": false,
-  "icon": "opentelekomcloud.svg",
+  "icon": "https://raw.githubusercontent.com/anton-sidelnikov/otc-node-driver-extension/main/pkg/opentelekomcloud/assets/icon-opentelekomcloud.svg",
   "rancher": {
     "annotations": {
       "catalog.cattle.io/rancher-version": ">= 2.10.0",
