@@ -374,13 +374,12 @@ export class OpenTelekomCloud {
     };
 
     try {
-      const res = await this.$dispatch('management/request', {
+      return await this.$dispatch('management/request', {
         url,
         headers,
-        method:               'GET',
+        method: method,
         redirectUnauthorized: false,
-      }, { root: true });
-      return res;
+      }, {root: true});
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);
@@ -404,14 +403,12 @@ export class OpenTelekomCloud {
     };
 
     try {
-      const res = await this.$dispatch('management/request', {
+      return await this.$dispatch('management/request', {
         url,
         headers,
-        method:               'GET',
+        method: 'GET',
         redirectUnauthorized: false,
-      }, { root: true });
-
-      return res;
+      }, {root: true});
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);
