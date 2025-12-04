@@ -11,14 +11,14 @@ entries:
       catalog.cattle.io/ui-component: plugins
       catalog.cattle.io/ui-extensions-version: '>= 3.0.0 < 4.0.0'
     apiVersion: v2
-    appVersion: 1.0.1
-    created: "2025-12-04T14:33:38.121155+01:00"
+    appVersion: 1.0.2
+    created: "2025-12-04T15:07:41.436991+01:00"
     description: OpenTelekomCloud node driver extension plugin
-    digest: 356fe8e40270b65b0a79006319f7f211e9fd53b7831179158296818d9276749e
+    digest: 1f717837f8523a13eb7ce46b0cd287a798881befc1e44551295d1ce164eae65a
     icon: opentelekomcloud.svg
     name: opentelekomcloud
     type: application
     urls:
-    - assets/opentelekomcloud/opentelekomcloud-1.0.1.tgz
-    version: 1.0.1
-generated: "2025-12-04T14:33:38.120882+01:00"
+    - assets/opentelekomcloud/opentelekomcloud-1.0.2.tgz
+    version: 1.0.2
+generated: "2025-12-04T15:07:41.436726+01:00"
