@@ -4,9 +4,9 @@ plugin:
   enabled: true
   versionOverride: ""
   endpoint: >-
-    https://raw.githubusercontent.com/anton-sidelnikov/otc-node-driver-extension/gh-pages/extensions/opentelekomcloud/0.4.1
+    https://raw.githubusercontent.com/anton-sidelnikov/otc-node-driver-extension/gh-pages/extensions/opentelekomcloud/0.5.0
   compressedEndpoint: >-
-    https://raw.githubusercontent.com/anton-sidelnikov/otc-node-driver-extension/gh-pages/extensions/opentelekomcloud/0.4.1.tgz
+    https://raw.githubusercontent.com/anton-sidelnikov/otc-node-driver-extension/gh-pages/extensions/opentelekomcloud/0.5.0.tgz
   noCache: false
   noAuth: false
   metadata:

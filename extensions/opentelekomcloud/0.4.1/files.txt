@@ -1,7 +1,0 @@
-plugin/opentelekomcloud-0.4.1.umd.min.cloud-credential.js
-plugin/opentelekomcloud-0.4.1.umd.min.cloud-credential.js.map
-plugin/opentelekomcloud-0.4.1.umd.min.js
-plugin/opentelekomcloud-0.4.1.umd.min.js.map
-plugin/opentelekomcloud-0.4.1.umd.min.machine-config.js
-plugin/opentelekomcloud-0.4.1.umd.min.machine-config.js.map
-plugin/package.json
