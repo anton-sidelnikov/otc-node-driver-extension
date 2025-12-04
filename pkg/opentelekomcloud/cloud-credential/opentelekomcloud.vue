@@ -1,4 +1,4 @@
-<script lang="ts">
+<script>
 import Banner from '@components/Banner/Banner.vue';
 import { LabeledInput } from '@components/Form/LabeledInput';
 import LabeledSelect from '@shell/components/form/LabeledSelect';
@@ -121,7 +121,7 @@ export default {
   },
 
   watch: {
-    region(newVal: string) {
+    region(newVal) {
       const url = this.authUrlForRegion(newVal);
       this.value.setData('region', newVal || '');
       this.value.setData('authUrl', url || '');
@@ -149,7 +149,7 @@ export default {
 
   methods: {
     // OTC-specific mapping from region -> IAM endpoint
-    authUrlForRegion(region: string): string {
+    authUrlForRegion(region) {
       if (!region) {
         return '';
       }
@@ -234,7 +234,7 @@ export default {
       }
     },
 
-    async connect(cb: (ok: boolean) => void) {
+    async connect(cb) {
       this.error = '';
       this.errorAllowHost = false;
 
